@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZECTRIX Note 4 推送</title>
+  <style>
+    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+    body { max-width: 720px; margin: 40px auto; padding: 0 20px; color: #202124; background: #f6f7f9; }
+    h1 { font-size: 26px; margin-bottom: 8px; }
+    p { color: #5f6368; line-height: 1.6; }
+    form { background: white; padding: 24px; border-radius: 14px; box-shadow: 0 4px 24px #0001; }
+    label { display: block; font-weight: 600; margin: 18px 0 7px; }
+    input, textarea, select { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid #dadce0; border-radius: 8px; font: inherit; background: white; }
+    textarea { min-height: 150px; resize: vertical; }
+    .row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; }
+    button { margin-top: 22px; width: 100%; padding: 12px; border: 0; border-radius: 8px; background: #1a73e8; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #result { white-space: pre-wrap; min-height: 24px; }
+    code { background: #e8eaed; padding: 2px 5px; border-radius: 4px; }
+    @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>ZECTRIX Note 4 推送</h1>
+  <p>每次推送都会建立新连接，同时播放提示音并显示内容。保持时间为 <code>0</code> 时一直显示；按设备任意键均可提前结束。</p>
+  <form id="push">
+    <label for="title">标题（仅文本，可选）</label>
+    <input id="title" name="title" placeholder="通知">
+
+    <label for="text">文本</label>
+    <textarea id="text" name="text" placeholder="输入要显示的文字">道可道，非常道；名可名，非常名。</textarea>
+
+    <label for="image">或选择图片（选择后忽略文本）</label>
+    <input id="image" name="image" type="file" accept="image/png,image/jpeg,image/gif">
+
+    <div class="row">
+      <div>
+        <label for="sound">音效</label>
+        <select id="sound" name="sound">
+          <option>Purr</option><option>Tink</option><option>Bottle</option>
+          <option>Pop</option><option selected>Glass</option><option>Submarine</option>
+        </select>
+      </div>
+      <div>
+        <label for="volume">音量</label>
+        <input id="volume" name="volume" type="number" min="0" max="100" value="80" required>
+      </div>
+      <div>
+        <label for="hold">保持（秒）</label>
+        <input id="hold" name="hold" type="number" min="0" step="1" value="3" required>
+      </div>
+    </div>
+    <button id="submit" type="submit">推送到设备</button>
+  </form>
+  <p id="result" role="status"></p>
+  <script>
+    const form = document.getElementById('push');
+    const button = document.getElementById('submit');
+    const result = document.getElementById('result');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      button.disabled = true;
+      result.textContent = '正在推送，请留意设备…';
+      const data = new FormData(form);
+      if (document.getElementById('image').files.length > 0) data.delete('text');
+      else data.delete('image');
+      try {
+        const response = await fetch('/api/push', {method: 'POST', body: data});
+        const body = await response.json();
+        result.textContent = response.ok
+          ? `完成：音效 ${body.sound}，音量 ${body.volume}，保持时间 ${body.hold} 秒。`
+          : `失败：${body.error}`;
+      } catch (error) {
+        result.textContent = `请求失败：${error}`;
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

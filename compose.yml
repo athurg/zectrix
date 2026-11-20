@@ -14,5 +14,3 @@ services:
       - ${ZECTRIX_DEVICE:?Set ZECTRIX_DEVICE to the device IP or 12-hex ID}
       - -listen
       - 0.0.0.0:8080
-      - -font
-      - /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc

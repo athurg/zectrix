@@ -26,3 +26,20 @@ func TestRenderTextThroughImageFitHasInk(t *testing.T) {
 		t.Fatal("rendered text became an all-white image")
 	}
 }
+
+func TestRenderTextWithOptions(t *testing.T) {
+	font, err := LoadFont("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := RenderTextWithOptions(font, "标题", "正文", TextOptions{TitleSize: 20, BodySize: 14})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Bounds().Dx() != Width || page.Bounds().Dy() != Height {
+		t.Fatalf("size %v", page.Bounds())
+	}
+	if _, err := RenderTextWithOptions(font, "标题", "正文", TextOptions{TitleSize: 7, BodySize: 14}); err == nil {
+		t.Fatal("invalid title size accepted")
+	}
+}

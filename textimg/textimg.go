@@ -1,4 +1,4 @@
-// Package textimg renders a title and CJK body text into a 400×300 black/white
+// Package textimg renders a title and CJK body text into a 400×300 grayscale
 // image for the Note 4.
 package textimg
 
@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/athurg/zectrix/assets"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/font/sfnt"
@@ -28,34 +29,20 @@ const (
 // first face that maps Chinese glyphs.
 type FontSpec struct{ Path, Face string }
 
-// DefaultFonts are macOS Chinese fonts that golang.org/x/image/font/sfnt can
-// parse (STHeiti's cmap is not supported), in order of preference. PingFang
-// is an on-demand system asset, so its directory name is a hash.
-var DefaultFonts = []FontSpec{
-	{"/System/Library/AssetsV2/com_apple_MobileAsset_Font*/*/AssetData/PingFang.ttc", "PingFang SC Medium"},
-	{"/System/Library/Fonts/Hiragino Sans GB.ttc", "Hiragino Sans GB W6"},
-	{"/System/Library/Fonts/Supplemental/Arial Unicode.ttf", ""},
+// LoadFont loads the embedded Zfull-GB font when path is empty, or path
+// otherwise. For a collection (.ttc), the first Chinese face is used.
+func LoadFont(path string) (*Font, error) {
+	if path == "" {
+		return parseFont(assets.ZfullGB, "")
+	}
+	f, err := loadSpec(FontSpec{Path: path})
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return f, nil
 }
 
-// LoadFont loads path, or the first usable DefaultFonts entry when path is
-// empty. For a collection (.ttc) given by path, the first Chinese face is used.
-func LoadFont(path string) (*opentype.Font, error) {
-	specs := DefaultFonts
-	if path != "" {
-		specs = []FontSpec{{Path: path}}
-	}
-	var errs []error
-	for _, s := range specs {
-		f, err := loadSpec(s)
-		if err == nil {
-			return f, nil
-		}
-		errs = append(errs, fmt.Errorf("%s: %w", s.Path, err))
-	}
-	return nil, fmt.Errorf("textimg: no usable Chinese font: %w", errors.Join(errs...))
-}
-
-func loadSpec(s FontSpec) (*opentype.Font, error) {
+func loadSpec(s FontSpec) (*Font, error) {
 	path := s.Path
 	if m, _ := filepath.Glob(path); len(m) > 0 {
 		path = m[0]
@@ -64,6 +51,10 @@ func loadSpec(s FontSpec) (*opentype.Font, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseFont(data, s.Face)
+}
+
+func parseFont(data []byte, faceName string) (*Font, error) {
 	c, err := opentype.ParseCollection(data) // also accepts a single font
 	if err != nil {
 		return nil, err
@@ -73,24 +64,24 @@ func loadSpec(s FontSpec) (*opentype.Font, error) {
 		if err != nil {
 			continue
 		}
-		if s.Face != "" {
-			if name, _ := f.Name(nil, sfnt.NameIDFull); name != s.Face {
+		if faceName != "" {
+			if name, _ := f.Name(nil, sfnt.NameIDFull); name != faceName {
 				continue
 			}
 		}
 		// Parsing succeeds lazily; make sure the face really maps Chinese glyphs.
 		if hasChinese(f) {
-			return f, nil
+			return newFont(data, f)
 		}
 	}
-	if s.Face != "" {
-		return nil, fmt.Errorf("no usable face %q", s.Face)
+	if faceName != "" {
+		return nil, fmt.Errorf("no usable face %q", faceName)
 	}
 	return nil, errors.New("font has no Chinese glyphs")
 }
 
 func hasChinese(f *opentype.Font) bool {
-	fc, err := face(f, 16)
+	fc, err := opentype.NewFace(f, &opentype.FaceOptions{Size: 16, DPI: 72, Hinting: font.HintingFull})
 	if err != nil {
 		return false
 	}
@@ -102,8 +93,8 @@ func hasChinese(f *opentype.Font) bool {
 // Closing punctuation may hang past the right margin instead of starting a line.
 const noLineStart = "，。、；：！？）」』”’》〉…"
 
-func face(f *opentype.Font, size float64) (font.Face, error) {
-	return opentype.NewFace(f, &opentype.FaceOptions{Size: size, DPI: 72, Hinting: font.HintingFull})
+func face(f *Font, size int) (font.Face, error) {
+	return newFreeTypeFace(f, size)
 }
 
 // wrap breaks paragraphs (split on '\n') into lines no wider than max.
@@ -126,20 +117,40 @@ func wrap(fc font.Face, text string, max fixed.Int26_6) []string {
 	return lines
 }
 
-// footerSize is the pixel size of the footer line.
-const footerSize = 14
+const (
+	DefaultTitleSize = 16
+	DefaultBodySize  = 14
+	MinFontSize      = 8
+	MaxFontSize      = 48
+	footerSize       = 14
+)
 
-// Render draws title (centred, with a rule below), body, and an optional
-// one-line footer at the bottom (with a rule above), picking the largest body
-// size from 24 down to 12 px that fits. The result is pure black/white:
-// anti-aliased edges are snapped so the 1bpp screen stays crisp.
-func Render(f *opentype.Font, title, body, footer string) (*image.Gray, error) {
+type Options struct {
+	TitleSize int
+	BodySize  int
+}
+
+// Render uses the default 16px title and 14px body sizes.
+func Render(f *Font, title, body, footer string) (*image.Gray, error) {
+	return RenderWithOptions(f, title, body, footer, Options{
+		TitleSize: DefaultTitleSize,
+		BodySize:  DefaultBodySize,
+	})
+}
+
+// RenderWithOptions draws text using FreeType and rejects text that does not
+// fit. Grayscale glyph edges are preserved for PackMono's 1bpp conversion.
+func RenderWithOptions(f *Font, title, body, footer string, options Options) (*image.Gray, error) {
+	if options.TitleSize < MinFontSize || options.TitleSize > MaxFontSize ||
+		options.BodySize < MinFontSize || options.BodySize > MaxFontSize {
+		return nil, fmt.Errorf("textimg: font sizes must be %d..%d", MinFontSize, MaxFontSize)
+	}
 	img := image.NewGray(image.Rect(0, 0, Width, Height))
 	draw.Draw(img, img.Bounds(), image.White, image.Point{}, draw.Src)
 
 	top := margin
 	if title != "" {
-		tf, err := face(f, 26)
+		tf, err := face(f, options.TitleSize)
 		if err != nil {
 			return nil, err
 		}
@@ -175,36 +186,23 @@ func Render(f *opentype.Font, title, body, footer string) (*image.Gray, error) {
 	}
 
 	avail := bottom - top
-	for size := 24.0; size >= 12; size-- {
-		bf, err := face(f, size)
-		if err != nil {
-			return nil, err
-		}
-		lineH := int(size*1.5 + 0.5)
-		lines := wrap(bf, body, fixed.I(Width-2*margin))
-		if len(lines)*lineH > avail {
-			bf.Close()
-			if size > 12 {
-				continue
-			}
-			return nil, errors.New("textimg: text does not fit on 400x300 even at 12px")
-		}
-		dr := &font.Drawer{Dst: img, Src: image.Black, Face: bf}
-		asc := bf.Metrics().Ascent
-		for i, l := range lines {
-			dr.Dot = fixed.Point26_6{X: fixed.I(margin), Y: fixed.I(top+i*lineH) + asc}
-			dr.DrawString(l)
-		}
+	bf, err := face(f, options.BodySize)
+	if err != nil {
+		return nil, err
+	}
+	lineH := options.BodySize * 3 / 2
+	lines := wrap(bf, body, fixed.I(Width-2*margin))
+	if len(lines)*lineH > avail {
 		bf.Close()
-		break
+		return nil, fmt.Errorf("textimg: text does not fit on 400x300 at %dpx", options.BodySize)
 	}
+	dr := &font.Drawer{Dst: img, Src: image.Black, Face: bf}
+	asc := bf.Metrics().Ascent
+	for i, l := range lines {
+		dr.Dot = fixed.Point26_6{X: fixed.I(margin), Y: fixed.I(top+i*lineH) + asc}
+		dr.DrawString(l)
+	}
+	bf.Close()
 
-	for i, v := range img.Pix {
-		if v < 128 {
-			img.Pix[i] = 0
-		} else {
-			img.Pix[i] = 255
-		}
-	}
 	return img, nil
 }

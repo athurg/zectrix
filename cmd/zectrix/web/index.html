@@ -5,16 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ZECTRIX Note 4 推送</title>
   <style>
-    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+    @font-face { font-family: "Zfull-GB"; src: url("/assets/Zfull-GB.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: block; }
+    :root { color-scheme: light; font-family: "Zfull-GB", sans-serif; }
     body { max-width: 720px; margin: 40px auto; padding: 0 20px; color: #202124; background: #f6f7f9; }
     h1 { font-size: 26px; margin-bottom: 8px; }
     p { color: #5f6368; line-height: 1.6; }
     form { background: white; padding: 24px; border-radius: 14px; box-shadow: 0 4px 24px #0001; }
-    label { display: block; font-weight: 600; margin: 18px 0 7px; }
+    label { display: block; font-weight: 400; margin: 18px 0 7px; }
     input, textarea, select { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid #dadce0; border-radius: 8px; font: inherit; background: white; }
     textarea { min-height: 150px; resize: vertical; }
     .row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; }
-    button { margin-top: 22px; width: 100%; padding: 12px; border: 0; border-radius: 8px; background: #1a73e8; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+    .sizes { grid-template-columns: 1fr 1fr; }
+    button { margin-top: 22px; width: 100%; padding: 12px; border: 0; border-radius: 8px; background: #1a73e8; color: white; font: inherit; font-weight: 400; cursor: pointer; }
     button:disabled { opacity: .55; cursor: wait; }
     #result { white-space: pre-wrap; min-height: 24px; }
     code { background: #e8eaed; padding: 2px 5px; border-radius: 4px; }
@@ -31,7 +33,18 @@
     <label for="text">文本</label>
     <textarea id="text" name="text" placeholder="输入要显示的文字">道可道，非常道；名可名，非常名。</textarea>
 
-    <label for="image">或选择图片（选择后忽略文本）</label>
+    <div class="row sizes">
+      <div>
+        <label for="title_size">标题字号（px）</label>
+        <input id="title_size" name="title_size" type="number" min="8" max="48" step="1" value="16" required>
+      </div>
+      <div>
+        <label for="body_size">正文字号（px）</label>
+        <input id="body_size" name="body_size" type="number" min="8" max="48" step="1" value="14" required>
+      </div>
+    </div>
+
+    <label for="image">或选择图片（选择后忽略文本和字号）</label>
     <input id="image" name="image" type="file" accept="image/png,image/jpeg,image/gif">
 
     <div class="row">
@@ -58,8 +71,32 @@
     const form = document.getElementById('push');
     const button = document.getElementById('submit');
     const result = document.getElementById('result');
+    const fieldNames = ['title', 'text', 'title_size', 'body_size', 'sound', 'volume', 'hold'];
+    const storageKey = name => `zectrix.option.${name}`;
+
+    function saveOption(name) {
+      try {
+        localStorage.setItem(storageKey(name), form.elements.namedItem(name).value);
+      } catch {}
+    }
+
+    for (const name of fieldNames) {
+      const field = form.elements.namedItem(name);
+      try {
+        const saved = localStorage.getItem(storageKey(name));
+        if (saved !== null) field.value = saved;
+      } catch {}
+      field.addEventListener('input', () => saveOption(name));
+      field.addEventListener('change', () => saveOption(name));
+    }
+    window.addEventListener('beforeunload', () => {
+      fieldNames.forEach(saveOption);
+      form.reset();
+    });
+
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
+      fieldNames.forEach(saveOption);
       button.disabled = true;
       result.textContent = '正在推送，请留意设备…';
       const data = new FormData(form);
@@ -69,7 +106,7 @@
         const response = await fetch('/api/push', {method: 'POST', body: data});
         const body = await response.json();
         result.textContent = response.ok
-          ? `完成：音效 ${body.sound}，音量 ${body.volume}，保持时间 ${body.hold} 秒。`
+          ? `完成：音效 ${body.sound}，音量 ${body.volume}，保持 ${body.hold} 秒；标题 ${body.title_size}px，正文 ${body.body_size}px。`
           : `失败：${body.error}`;
       } catch (error) {
         result.textContent = `请求失败：${error}`;

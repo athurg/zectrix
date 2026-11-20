@@ -33,18 +33,18 @@ func TestPushJSONUsesDefaults(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", w.Code, w.Body)
 	}
-	if captured.Title != "通知" || captured.Text != "你好" || captured.Volume != 80 || captured.Sound != "Glass" || captured.Hold != 3 {
+	if captured.Title != "通知" || captured.Text != "你好" || captured.Volume != 80 || captured.Sound != "Glass" || captured.Hold != 3 || captured.TitleSize != 16 || captured.BodySize != 14 {
 		t.Fatalf("%+v", captured)
 	}
 }
 
 func TestPushJSONAcceptsExplicitZeroAndManualHold(t *testing.T) {
 	s, captured := testWebServer()
-	r := httptest.NewRequest(http.MethodPost, "/api/push", strings.NewReader(`{"text":"你好","volume":0,"sound":"glass","hold":0}`))
+	r := httptest.NewRequest(http.MethodPost, "/api/push", strings.NewReader(`{"text":"你好","volume":0,"sound":"glass","hold":0,"title_size":20,"body_size":14}`))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	s.routes().ServeHTTP(w, r)
-	if w.Code != http.StatusOK || captured.Volume != 0 || captured.Sound != "Glass" || captured.Hold != 0 {
+	if w.Code != http.StatusOK || captured.Volume != 0 || captured.Sound != "Glass" || captured.Hold != 0 || captured.TitleSize != 20 || captured.BodySize != 14 {
 		t.Fatalf("status %d request %+v", w.Code, captured)
 	}
 }
@@ -55,6 +55,8 @@ func TestPushMultipartImage(t *testing.T) {
 	writer.WriteField("volume", "90")
 	writer.WriteField("sound", "Tink")
 	writer.WriteField("hold", "0")
+	writer.WriteField("title_size", "18")
+	writer.WriteField("body_size", "13")
 	file, err := writer.CreateFormFile("image", "test.png")
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +75,7 @@ func TestPushMultipartImage(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", w.Code, w.Body)
 	}
-	if captured.Image == nil || captured.Image.Bounds().Dx() != 20 || captured.Volume != 90 || captured.Sound != "Tink" || captured.Hold != 0 {
+	if captured.Image == nil || captured.Image.Bounds().Dx() != 20 || captured.Volume != 90 || captured.Sound != "Tink" || captured.Hold != 0 || captured.TitleSize != 18 || captured.BodySize != 13 {
 		t.Fatalf("%+v", captured)
 	}
 }
@@ -84,6 +86,8 @@ func TestPushRejectsInvalidRequests(t *testing.T) {
 		`{"text":"x","hold":-1}`,
 		`{"text":"x","hold":-2}`,
 		`{"text":"x","volume":101}`,
+		`{"text":"x","title_size":7}`,
+		`{"text":"x","body_size":49}`,
 		`{"text":"x","sound":"missing"}`,
 		`{"text":"x","unknown":true}`,
 	} {
@@ -114,7 +118,7 @@ func TestWaitHoldAcceptsAnyKeyForManualAndTimedDisplay(t *testing.T) {
 
 func TestWebPageAndPromptCatalog(t *testing.T) {
 	s, _ := testWebServer()
-	for _, path := range []string{"/", "/api/prompts"} {
+	for _, path := range []string{"/", "/api/prompts", "/assets/Zfull-GB.ttf"} {
 		r := httptest.NewRequest(http.MethodGet, path, nil)
 		w := httptest.NewRecorder()
 		s.routes().ServeHTTP(w, r)

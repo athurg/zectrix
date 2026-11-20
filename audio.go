@@ -82,15 +82,15 @@ type promptSound struct {
 }
 
 var promptCatalog = []promptSound{
-	{PromptInfo: PromptInfo{ID: "1", Name: "Purr", Duration: 12123 * time.Second / 16000}, path: "assets/prompts/1-purr.opusframes"},
-	{PromptInfo: PromptInfo{ID: "2", Name: "Tink", Duration: 9026 * time.Second / 16000}, path: "assets/prompts/2-tink.opusframes"},
-	{PromptInfo: PromptInfo{ID: "3", Name: "Bottle", Duration: 12372 * time.Second / 16000}, path: "assets/prompts/3-bottle.opusframes"},
-	{PromptInfo: PromptInfo{ID: "4", Name: "Pop", Duration: 26039 * time.Second / 16000}, path: "assets/prompts/4-pop.opusframes"},
-	{PromptInfo: PromptInfo{ID: "5", Name: "Glass", Duration: 26401 * time.Second / 16000}, path: "assets/prompts/5-glass.opusframes"},
-	{PromptInfo: PromptInfo{ID: "6", Name: "Submarine", Duration: 23879 * time.Second / 16000}, path: "assets/prompts/6-submarine.opusframes"},
+	{PromptInfo: PromptInfo{ID: "1", Name: "Purr", Duration: 12123 * time.Second / 16000}, path: "assets/1-purr.opusframes"},
+	{PromptInfo: PromptInfo{ID: "2", Name: "Tink", Duration: 9026 * time.Second / 16000}, path: "assets/2-tink.opusframes"},
+	{PromptInfo: PromptInfo{ID: "3", Name: "Bottle", Duration: 12372 * time.Second / 16000}, path: "assets/3-bottle.opusframes"},
+	{PromptInfo: PromptInfo{ID: "4", Name: "Pop", Duration: 26039 * time.Second / 16000}, path: "assets/4-pop.opusframes"},
+	{PromptInfo: PromptInfo{ID: "5", Name: "Glass", Duration: 26401 * time.Second / 16000}, path: "assets/5-glass.opusframes"},
+	{PromptInfo: PromptInfo{ID: "6", Name: "Submarine", Duration: 23879 * time.Second / 16000}, path: "assets/6-submarine.opusframes"},
 }
 
-//go:embed assets/prompts/*.opusframes
+//go:embed assets/*.opusframes
 var promptFiles embed.FS
 
 // Prompts returns the available prompt IDs in playback order.

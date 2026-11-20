@@ -22,7 +22,7 @@ import (
 	"time"
 
 	zectrix "github.com/athurg/zectrix"
-	"golang.org/x/image/font/opentype"
+	"github.com/athurg/zectrix/assets"
 )
 
 const (
@@ -36,23 +36,35 @@ const (
 var indexHTML []byte
 
 type pushRequest struct {
-	Title  string
-	Text   string
-	Image  image.Image
-	Volume int
-	Sound  string
-	Hold   int
+	Title     string
+	Text      string
+	Image     image.Image
+	Volume    int
+	Sound     string
+	Hold      int
+	TitleSize int
+	BodySize  int
+}
+
+func defaultPushRequest() pushRequest {
+	return pushRequest{
+		Volume:    defaultVolume,
+		Sound:     defaultSound,
+		Hold:      defaultHold,
+		TitleSize: zectrix.DefaultTitleSize,
+		BodySize:  zectrix.DefaultBodySize,
+	}
 }
 
 type webServer struct {
 	ctx    context.Context
 	device string
-	font   *opentype.Font
+	font   *zectrix.Font
 	mu     sync.Mutex
 	push   func(context.Context, pushRequest) error
 }
 
-func newWebServer(ctx context.Context, device string, font *opentype.Font) *webServer {
+func newWebServer(ctx context.Context, device string, font *zectrix.Font) *webServer {
 	s := &webServer{ctx: ctx, device: device, font: font}
 	s.push = s.pushDevice
 	return s
@@ -62,7 +74,7 @@ func cmdDemo(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("demo", flag.ExitOnError)
 	device := fs.String("device", "", "device address or id")
 	listen := fs.String("listen", "127.0.0.1:8080", "HTTP listen address")
-	fontPath := fs.String("font", "", "font file (default: macOS Chinese fonts)")
+	fontPath := fs.String("font", "", "font file (default: embedded Zfull-GB)")
 	fs.Parse(args)
 	addr, err := resolve(ctx, *device)
 	if err != nil {
@@ -100,6 +112,11 @@ func (s *webServer) routes() http.Handler {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(indexHTML)
 	})
+	mux.HandleFunc("GET /assets/Zfull-GB.ttf", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "font/ttf")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		w.Write(assets.ZfullGB)
+	})
 	mux.HandleFunc("GET /api/prompts", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"prompts": zectrix.Prompts()})
 	})
@@ -135,20 +152,23 @@ func (s *webServer) handlePush(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok": true, "sound": req.Sound, "volume": req.Volume, "hold": req.Hold,
+		"title_size": req.TitleSize, "body_size": req.BodySize,
 	})
 }
 
 type jsonPushRequest struct {
-	Title  string `json:"title"`
-	Text   string `json:"text"`
-	Image  string `json:"image"`
-	Volume *int   `json:"volume"`
-	Sound  string `json:"sound"`
-	Hold   *int   `json:"hold"`
+	Title     string `json:"title"`
+	Text      string `json:"text"`
+	Image     string `json:"image"`
+	Volume    *int   `json:"volume"`
+	Sound     string `json:"sound"`
+	Hold      *int   `json:"hold"`
+	TitleSize *int   `json:"title_size"`
+	BodySize  *int   `json:"body_size"`
 }
 
 func parsePushRequest(r *http.Request) (pushRequest, error) {
-	req := pushRequest{Volume: defaultVolume, Sound: defaultSound, Hold: defaultHold}
+	req := defaultPushRequest()
 	contentType := r.Header.Get("Content-Type")
 	var err error
 	switch {
@@ -166,7 +186,7 @@ func parsePushRequest(r *http.Request) (pushRequest, error) {
 }
 
 func parseJSONPush(r *http.Request) (pushRequest, error) {
-	req := pushRequest{Volume: defaultVolume, Sound: defaultSound, Hold: defaultHold}
+	req := defaultPushRequest()
 	var input jsonPushRequest
 	decoder := json.NewDecoder(io.LimitReader(r.Body, maxRequestBytes))
 	decoder.DisallowUnknownFields()
@@ -182,6 +202,12 @@ func parseJSONPush(r *http.Request) (pushRequest, error) {
 	}
 	if input.Hold != nil {
 		req.Hold = *input.Hold
+	}
+	if input.TitleSize != nil {
+		req.TitleSize = *input.TitleSize
+	}
+	if input.BodySize != nil {
+		req.BodySize = *input.BodySize
 	}
 	if req.Sound == "" {
 		req.Sound = defaultSound
@@ -204,7 +230,7 @@ func parseJSONPush(r *http.Request) (pushRequest, error) {
 }
 
 func parseFormPush(r *http.Request) (pushRequest, error) {
-	req := pushRequest{Volume: defaultVolume, Sound: defaultSound, Hold: defaultHold}
+	req := defaultPushRequest()
 	if err := r.ParseMultipartForm(maxRequestBytes); err != nil {
 		return req, err
 	}
@@ -223,6 +249,18 @@ func parseFormPush(r *http.Request) (pushRequest, error) {
 		req.Hold, err = strconv.Atoi(value)
 		if err != nil {
 			return req, fmt.Errorf("hold must be an integer")
+		}
+	}
+	if value := r.FormValue("title_size"); value != "" {
+		req.TitleSize, err = strconv.Atoi(value)
+		if err != nil {
+			return req, fmt.Errorf("title_size must be an integer")
+		}
+	}
+	if value := r.FormValue("body_size"); value != "" {
+		req.BodySize, err = strconv.Atoi(value)
+		if err != nil {
+			return req, fmt.Errorf("body_size must be an integer")
 		}
 	}
 	file, _, err := r.FormFile("image")
@@ -263,6 +301,10 @@ func normalizePushRequest(req pushRequest) (pushRequest, error) {
 	if req.Hold < 0 {
 		return req, fmt.Errorf("hold must be a non-negative number of seconds")
 	}
+	if req.TitleSize < zectrix.MinFontSize || req.TitleSize > zectrix.MaxFontSize ||
+		req.BodySize < zectrix.MinFontSize || req.BodySize > zectrix.MaxFontSize {
+		return req, fmt.Errorf("title_size and body_size must be %d..%d", zectrix.MinFontSize, zectrix.MaxFontSize)
+	}
 	if (req.Text == "") == (req.Image == nil) {
 		return req, fmt.Errorf("provide exactly one of text or image")
 	}
@@ -284,7 +326,10 @@ func (s *webServer) pushDevice(ctx context.Context, req pushRequest) (err error)
 	if req.Image != nil {
 		page = req.Image
 	} else {
-		page, err = zectrix.RenderText(s.font, req.Title, req.Text)
+		page, err = zectrix.RenderTextWithOptions(s.font, req.Title, req.Text, zectrix.TextOptions{
+			TitleSize: req.TitleSize,
+			BodySize:  req.BodySize,
+		})
 		if err != nil {
 			return err
 		}

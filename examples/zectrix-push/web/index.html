@@ -77,6 +77,9 @@
     <label for="text">文本</label>
     <textarea id="text" name="text" cols="26" rows="11" placeholder="输入要显示的文字">{{.Defaults.Text}}</textarea>
 
+    <label for="footer">底栏（留空隐藏）</label>
+    <input id="footer" name="footer" placeholder="按任意键退出..." value="{{.Defaults.Footer}}">
+
     <div class="row sizes">
       <div>
         <label for="title_size">标题字号（px）</label>
@@ -115,7 +118,7 @@
     const form = document.getElementById('push');
     const button = document.getElementById('submit');
     const result = document.getElementById('result');
-    const fieldNames = ['device', 'title', 'text', 'title_size', 'body_size', 'sound', 'volume', 'hold'];
+    const fieldNames = ['device', 'title', 'text', 'footer', 'title_size', 'body_size', 'sound', 'volume', 'hold'];
     const storageKey = name => `zectrix.option.${name}`;
 
     function saveOption(name) {

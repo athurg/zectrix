@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestRenderTextMatchesFreeTypeBitmapLayout(t *testing.T) {
+func TestRenderTextMatchesBitmapLayout(t *testing.T) {
 	font, err := LoadFont("")
 	if err != nil {
 		t.Fatal(err)
@@ -21,8 +21,8 @@ func TestRenderTextMatchesFreeTypeBitmapLayout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The original FreeType output includes the title baseline, divider and body spacing.
-	const want = "d8d8b66677e5171db8150f5e15ed24e86c01eb18991c519f84039b115b67b9d5"
+	// The golden image covers the inverse title bar and body spacing.
+	const want = "17a8263c39c903dcf3c2bb79f04230b44cb352729b5ea1df2787ccdbc0952be2"
 	if got := fmt.Sprintf("%x", sha256.Sum256(packed)); got != want {
 		t.Fatalf("1bpp image hash = %s, want %s", got, want)
 	}

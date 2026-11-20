@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	zectrix "github.com/athurg/zectrix"
+	"github.com/athurg/zectrix/textimg"
 )
 
 func testWebServer() (*webServer, *pushRequest) {
@@ -26,6 +27,32 @@ func testWebServer() (*webServer, *pushRequest) {
 	return s, captured
 }
 
+func TestDefaultPushTextFillsLastLine(t *testing.T) {
+	req := defaultPushRequest()
+	font, err := zectrix.LoadFont("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := textimg.RenderWithOptions(font, req.Title, req.Text, req.Footer, textimg.Options{
+		TitleSize: req.TitleSize,
+		BodySize:  req.BodySize,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastLineHasInk := false
+	for y := page.Bounds().Max.Y - 44; y < page.Bounds().Max.Y-28; y++ {
+		for x := page.Bounds().Min.X; x < page.Bounds().Max.X; x++ {
+			if page.GrayAt(x, y).Y != 255 {
+				lastLineHasInk = true
+			}
+		}
+	}
+	if !lastLineHasInk {
+		t.Fatal("default push text does not reach the fourteenth body line")
+	}
+}
+
 func TestPushJSONUsesDefaults(t *testing.T) {
 	s, captured := testWebServer()
 	r := httptest.NewRequest(http.MethodPost, "/api/push", strings.NewReader(`{}`))
@@ -38,7 +65,7 @@ func TestPushJSONUsesDefaults(t *testing.T) {
 	if captured.Device != "192.0.2.1:32342" {
 		t.Fatalf("device = %q", captured.Device)
 	}
-	if captured.Title != "通知" || captured.Text != defaultText || captured.Volume != 80 || captured.Sound != "Glass" || captured.Hold != 10 || captured.TitleSize != 16 || captured.BodySize != 14 {
+	if captured.Title != "通知" || captured.Text != defaultText || captured.Footer != defaultFooter || captured.Volume != 80 || captured.Sound != "Glass" || captured.Hold != 10 || captured.TitleSize != 16 || captured.BodySize != 14 {
 		t.Fatalf("%+v", captured)
 	}
 }
@@ -51,6 +78,17 @@ func TestPushJSONAcceptsExplicitZeroAndManualHold(t *testing.T) {
 	s.routes().ServeHTTP(w, r)
 	if w.Code != http.StatusOK || captured.Volume != 0 || captured.Sound != "Glass" || captured.Hold != 0 || captured.TitleSize != 20 || captured.BodySize != 14 {
 		t.Fatalf("status %d request %+v", w.Code, captured)
+	}
+}
+
+func TestPushJSONCanHideFooter(t *testing.T) {
+	s, captured := testWebServer()
+	r := httptest.NewRequest(http.MethodPost, "/api/push", strings.NewReader(`{"footer":""}`))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.routes().ServeHTTP(w, r)
+	if w.Code != http.StatusOK || captured.Footer != "" {
+		t.Fatalf("status %d, footer %q", w.Code, captured.Footer)
 	}
 }
 
@@ -121,6 +159,7 @@ func TestWebStartupTextDefaults(t *testing.T) {
 	s, captured := testWebServer()
 	s.defaults.Title = "<提醒>"
 	s.defaults.Text = "启动时指定的正文"
+	s.defaults.Footer = "<提示>"
 	s.defaults.Sound = "Tink"
 	s.defaults.Volume = 0
 	s.defaults.Hold = 0
@@ -130,7 +169,7 @@ func TestWebStartupTextDefaults(t *testing.T) {
 	page := httptest.NewRecorder()
 	handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/", nil))
 	for _, want := range []string{
-		`value="&lt;提醒&gt;"`, `>启动时指定的正文</textarea>`, `<option selected>Tink</option>`,
+		`value="&lt;提醒&gt;"`, `>启动时指定的正文</textarea>`, `value="&lt;提示&gt;"`, `<option selected>Tink</option>`,
 		`max="100" value="0"`, `step="1" value="0"`, `step="1" value="20"`, `step="1" value="18"`,
 	} {
 		if !strings.Contains(page.Body.String(), want) {

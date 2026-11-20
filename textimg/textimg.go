@@ -19,9 +19,14 @@ import (
 )
 
 const (
-	Width  = 400
-	Height = 300
-	margin = 16
+	Width             = 400
+	Height            = 300
+	margin            = 8
+	titleBarPadding   = 5
+	minTitleBarHeight = 28
+	footerBarPadding  = 3
+	sectionGap        = 8
+	bodyLineGap       = 2
 )
 
 // FontSpec names a font file (a glob pattern is allowed) and, for
@@ -124,7 +129,7 @@ const (
 	DefaultBodySize  = 14
 	MinFontSize      = 8
 	MaxFontSize      = 48
-	footerSize       = 14
+	footerSize       = 12
 )
 
 type Options struct {
@@ -140,9 +145,12 @@ func Render(f *Font, title, body, footer string) (*image.Gray, error) {
 	})
 }
 
-// RenderWithOptions draws text using embedded bitmaps or OpenType outlines and
-// rejects text that does not fit. Grayscale glyph edges are preserved for
-// PackMono's 1bpp conversion.
+// RenderWithOptions draws text using embedded bitmaps or OpenType outlines.
+// The title and footer use full-width inverse bars. The body fits the maximum
+// whole number of Chinese character columns and centers the resulting text
+// area. Body lines have two pixels of additional spacing, and text that does
+// not fit is rejected. Grayscale glyph edges are preserved for PackMono's 1bpp
+// conversion.
 func RenderWithOptions(f *Font, title, body, footer string, options Options) (*image.Gray, error) {
 	if options.TitleSize < MinFontSize || options.TitleSize > MaxFontSize ||
 		options.BodySize < MinFontSize || options.BodySize > MaxFontSize {
@@ -157,35 +165,42 @@ func RenderWithOptions(f *Font, title, body, footer string, options Options) (*i
 		if err != nil {
 			return nil, err
 		}
-		dr := &font.Drawer{Dst: img, Src: image.Black, Face: tf}
+		metrics := tf.Metrics()
+		textHeight := (metrics.Ascent + metrics.Descent).Ceil()
+		barHeight := max(textHeight+2*titleBarPadding, minTitleBarHeight)
+		draw.Draw(img, image.Rect(0, 0, Width, barHeight), image.Black, image.Point{}, draw.Src)
+		dr := &font.Drawer{Dst: img, Src: image.White, Face: tf}
 		w := dr.MeasureString(title)
-		asc := tf.Metrics().Ascent
-		dr.Dot = fixed.Point26_6{X: (fixed.I(Width) - w) / 2, Y: fixed.I(top) + asc}
+		dr.Dot = fixed.Point26_6{
+			X: (fixed.I(Width) - w) / 2,
+			Y: fixed.I((barHeight-textHeight)/2) + metrics.Ascent,
+		}
 		dr.DrawString(title)
-		top += (asc + tf.Metrics().Descent).Ceil() + 6
-		draw.Draw(img, image.Rect(margin, top, Width-margin, top+2), image.Black, image.Point{}, draw.Src)
-		top += 10
 		tf.Close()
+		top = barHeight + sectionGap
 	}
 
 	bottom := Height - margin
+	var footerFace font.Face
+	var footerMetrics font.Metrics
+	footerWidth := fixed.Int26_6(0)
+	footerHeight := 0
 	if footer != "" {
-		ff, err := face(f, footerSize)
+		var err error
+		footerFace, err = face(f, footerSize)
 		if err != nil {
 			return nil, err
 		}
-		dr := &font.Drawer{Dst: img, Src: image.Black, Face: ff}
-		if dr.MeasureString(footer) > fixed.I(Width-2*margin) {
-			ff.Close()
+		defer footerFace.Close()
+		footerMetrics = footerFace.Metrics()
+		footerTextHeight := (footerMetrics.Ascent + footerMetrics.Descent).Ceil()
+		footerHeight = footerTextHeight + 2*footerBarPadding
+		dr := &font.Drawer{Face: footerFace}
+		footerWidth = dr.MeasureString(footer)
+		if footerWidth > fixed.I(Width-2*margin) {
 			return nil, errors.New("textimg: footer does not fit on one line")
 		}
-		m := ff.Metrics()
-		bottom = Height - margin/2 - (m.Ascent + m.Descent).Ceil()
-		dr.Dot = fixed.Point26_6{X: fixed.I(margin), Y: fixed.I(bottom) + m.Ascent}
-		dr.DrawString(footer)
-		ff.Close()
-		draw.Draw(img, image.Rect(margin, bottom-5, Width-margin, bottom-4), image.Black, image.Point{}, draw.Src)
-		bottom -= 8
+		bottom = Height - sectionGap - footerHeight
 	}
 
 	avail := bottom - top
@@ -193,19 +208,41 @@ func RenderWithOptions(f *Font, title, body, footer string, options Options) (*i
 	if err != nil {
 		return nil, err
 	}
-	lineH := options.BodySize * 3 / 2
-	lines := wrap(bf, body, fixed.I(Width-2*margin))
-	if len(lines)*lineH > avail {
-		bf.Close()
+	defer bf.Close()
+	columnWidth, _ := bf.GlyphAdvance('中')
+	columns := int(fixed.I(Width) / columnWidth)
+	bodyWidth := columnWidth * fixed.Int26_6(columns)
+	bodyLeft := (fixed.I(Width) - bodyWidth) / 2
+	lines := wrap(bf, body, bodyWidth)
+	metrics := bf.Metrics()
+	bodyHeight := (metrics.Ascent + metrics.Descent).Ceil()
+	lineH := max(bodyHeight+bodyLineGap, metrics.Height.Ceil())
+	maxLines := 0
+	if bodyHeight <= avail {
+		maxLines = 1 + (avail-bodyHeight)/lineH
+	}
+	if len(lines) > maxLines {
 		return nil, fmt.Errorf("textimg: text does not fit on 400x300 at %dpx", options.BodySize)
 	}
+
+	if footer != "" {
+		footerTop := top + bodyHeight + (maxLines-1)*lineH + sectionGap
+		footerHeight = Height - footerTop
+		draw.Draw(img, image.Rect(0, footerTop, Width, Height), image.Black, image.Point{}, draw.Src)
+		textHeight := (footerMetrics.Ascent + footerMetrics.Descent).Ceil()
+		dr := &font.Drawer{Dst: img, Src: image.White, Face: footerFace}
+		dr.Dot = fixed.Point26_6{
+			X: fixed.I(Width-margin) - footerWidth,
+			Y: fixed.I(footerTop+(footerHeight-textHeight)/2) + footerMetrics.Ascent,
+		}
+		dr.DrawString(footer)
+	}
+
 	dr := &font.Drawer{Dst: img, Src: image.Black, Face: bf}
-	asc := bf.Metrics().Ascent
 	for i, l := range lines {
-		dr.Dot = fixed.Point26_6{X: fixed.I(margin), Y: fixed.I(top+i*lineH) + asc}
+		dr.Dot = fixed.Point26_6{X: bodyLeft, Y: fixed.I(top+i*lineH) + metrics.Ascent}
 		dr.DrawString(l)
 	}
-	bf.Close()
 
 	return img, nil
 }

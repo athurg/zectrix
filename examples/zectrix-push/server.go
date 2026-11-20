@@ -114,6 +114,7 @@ type jsonPushRequest struct {
 	Device    string  `json:"device"`
 	Title     *string `json:"title"`
 	Text      *string `json:"text"`
+	Footer    *string `json:"footer"`
 	Image     string  `json:"image"`
 	Volume    *int    `json:"volume"`
 	Sound     string  `json:"sound"`
@@ -153,6 +154,9 @@ func parseJSONPush(r *http.Request, req pushRequest) (pushRequest, error) {
 	req.Device = input.Device
 	if input.Title != nil {
 		req.Title = *input.Title
+	}
+	if input.Footer != nil {
+		req.Footer = *input.Footer
 	}
 	if strings.TrimSpace(input.Sound) != "" {
 		req.Sound = input.Sound
@@ -199,6 +203,9 @@ func parseFormPush(r *http.Request, req pushRequest) (pushRequest, error) {
 	req.Device = r.PostFormValue("device")
 	if r.Form.Has("title") {
 		req.Title = r.FormValue("title")
+	}
+	if r.Form.Has("footer") {
+		req.Footer = r.FormValue("footer")
 	}
 	hasText := r.Form.Has("text")
 	if hasText {

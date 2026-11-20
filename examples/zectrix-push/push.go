@@ -9,11 +9,28 @@ import (
 	"time"
 
 	"github.com/athurg/zectrix"
+	"github.com/athurg/zectrix/textimg"
 )
 
 const (
 	defaultTitle  = "通知"
-	defaultText   = "一二三四五六七八九，一二三四五六七八九，一二三四五六\n二\n三\n四\n五\n六\n七\n八\n九\n十\n一"
+	defaultFooter = "按任意键退出..."
+	defaultText   = "道可道，非常道；名可名，非常名。无名天地之始，" +
+		"有名万物之母。故常无欲，以观其妙；常有欲，以观其徼。" +
+		"此两者同出而异名，同谓之玄。玄之又玄，众妙之门。" +
+		"上善若水，水善利万物而不争，处众人之所恶，故几于道。" +
+		"居善地，心善渊，与善仁，言善信，事善能，动善时。" +
+		"知人者智，自知者明。胜人者有力，自胜者强。知足者富。" +
+		"强行者有志，不失其所者久，死而不亡者寿。知足不辱，" +
+		"知止不殆，可以长久。为学日益，为道日损。损之又损，" +
+		"以至于无为，无为而无不为。取天下常以无事，" +
+		"大方无隅，大器晚成，大音希声，大象无形，道隐无名。" +
+		"大直若屈，大巧若拙，大辩若讷。躁胜寒，静胜热。" +
+		"清静为天下正。祸兮福之所倚，福兮祸之所伏。" +
+		"治大国若烹小鲜。以道莅天下，其鬼不神。非其鬼不神，" +
+		"其神不伤人，圣人亦不伤人。夫两不相伤，故德交归焉。" +
+		"天下皆知美之为美，斯恶已；皆知善之为善，斯不善已。" +
+		"故有无相生，难易相成，长短相形，高下相倾。"
 	defaultVolume = 80
 	defaultSound  = "Glass"
 	defaultHold   = 10
@@ -23,6 +40,7 @@ type pushRequest struct {
 	Device    string
 	Title     string
 	Text      string
+	Footer    string
 	Image     image.Image
 	Volume    int
 	Sound     string
@@ -35,6 +53,7 @@ func defaultPushRequest() pushRequest {
 	return pushRequest{
 		Title:     defaultTitle,
 		Text:      defaultText,
+		Footer:    defaultFooter,
 		Volume:    defaultVolume,
 		Sound:     defaultSound,
 		Hold:      defaultHold,
@@ -47,6 +66,7 @@ func normalizePushRequest(req pushRequest, requireContent bool) (pushRequest, er
 	req.Device = strings.TrimSpace(req.Device)
 	req.Title = strings.TrimSpace(req.Title)
 	req.Text = strings.TrimSpace(req.Text)
+	req.Footer = strings.TrimSpace(req.Footer)
 	req.Sound = strings.TrimSpace(req.Sound)
 	if req.Sound == "" {
 		req.Sound = defaultSound
@@ -83,7 +103,7 @@ func pushDevice(ctx context.Context, req pushRequest, font *zectrix.Font, client
 	if req.Image != nil {
 		page = req.Image
 	} else {
-		page, err = zectrix.RenderTextWithOptions(font, req.Title, req.Text, zectrix.TextOptions{
+		page, err = textimg.RenderWithOptions(font, req.Title, req.Text, req.Footer, textimg.Options{
 			TitleSize: req.TitleSize,
 			BodySize:  req.BodySize,
 		})

@@ -10,7 +10,7 @@ go run ./examples/zectrix-push -device 192.168.1.100 -title '通知' -text '你�
 go run ./examples/zectrix-push -device 192.168.1.100 -image ./picture.png -sound Pop -volume 70
 ```
 
-`-device` 接受 IPv4、`IPv4:端口` 和 12 位十六进制设备 ID。默认推送标题为 `通知` 的 11 行测试正文，标题 16px、正文 14px，音效 Glass、音量 80，保持 10 秒。用 `-text` 或 `-image` 替换默认正文。`-hold` 以秒为单位，设为 `0` 会等待设备按键。用 `-h` 查看全部选项。
+`-device` 接受 IPv4、`IPv4:端口` 和 12 位十六进制设备 ID。默认推送标题为 `通知` 的 14 行测试正文，标题 16px、正文 14px，底栏为「按任意键退出...」，音效 Glass、音量 80，保持 10 秒。用 `-footer ''` 隐藏底栏。用 `-text` 或 `-image` 替换默认正文。`-hold` 以秒为单位，设为 `0` 会等待设备按键。用 `-h` 查看全部选项。
 
 ## Web 模式
 
@@ -26,7 +26,7 @@ go run ./examples/zectrix-push -web -device 192.168.1.100 -title '通知' -text 
 
 ## HTTP API
 
-向 `POST /api/push` 发送 JSON 或 multipart 表单。请求可用 `device` 指定 IPv4 或 `IPv4:端口`，留空时使用启动默认设备。省略 `title`、`text` 与 `image`、`sound`、`volume`、`hold`、`title_size` 或 `body_size` 时，继承对应的启动默认值。显式提供正文或图片会替换启动时的内容。
+向 `POST /api/push` 发送 JSON 或 multipart 表单。请求可用 `device` 指定 IPv4 或 `IPv4:端口`，留空时使用启动默认设备。省略 `title`、`text` 与 `image`、`footer`、`sound`、`volume`、`hold`、`title_size` 或 `body_size` 时，继承对应的启动默认值。显式设置 `footer` 为空字符串可隐藏底栏。显式提供正文或图片会替换启动时的内容。
 
 ```sh
 curl http://127.0.0.1:32342/api/push \

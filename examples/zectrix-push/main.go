@@ -32,6 +32,7 @@ func run(ctx context.Context, args []string) error {
 	fs.StringVar(&req.Device, "device", req.Device, "device IPv4 address, IPv4:port or 12-hex ID")
 	fs.StringVar(&req.Title, "title", req.Title, "optional title for text pushes")
 	fs.StringVar(&req.Text, "text", req.Text, "body text to push")
+	fs.StringVar(&req.Footer, "footer", req.Footer, "footer text (empty hides the footer)")
 	fs.StringVar(&req.Sound, "sound", req.Sound, "prompt name or ID")
 	fs.IntVar(&req.Volume, "volume", req.Volume, "playback volume (0..100)")
 	fs.IntVar(&req.Hold, "hold", req.Hold, "seconds to display the page (0 waits for a device key)")

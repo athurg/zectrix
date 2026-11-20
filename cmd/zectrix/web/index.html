@@ -27,6 +27,9 @@
   <h1>ZECTRIX Note 4 推送</h1>
   <p>每次推送都会建立新连接，同时播放提示音并显示内容。保持时间为 <code>0</code> 时一直显示；按设备任意键均可提前结束。</p>
   <form id="push">
+    <label for="device">设备 IP{{if .}}（留空使用默认地址）{{end}}</label>
+    <input id="device" name="device" placeholder="{{if .}}{{.}}{{else}}192.168.1.100{{end}}"{{if not .}} required{{end}}>
+
     <label for="title">标题（仅文本，可选）</label>
     <input id="title" name="title" placeholder="通知">
 
@@ -71,7 +74,7 @@
     const form = document.getElementById('push');
     const button = document.getElementById('submit');
     const result = document.getElementById('result');
-    const fieldNames = ['title', 'text', 'title_size', 'body_size', 'sound', 'volume', 'hold'];
+    const fieldNames = ['device', 'title', 'text', 'title_size', 'body_size', 'sound', 'volume', 'hold'];
     const storageKey = name => `zectrix.option.${name}`;
 
     function saveOption(name) {

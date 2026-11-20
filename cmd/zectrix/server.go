@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html/template"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -32,10 +33,15 @@ const (
 	maxRequestBytes = 12 << 20
 )
 
+var defaultDemoListen = net.JoinHostPort("127.0.0.1", strconv.Itoa(zectrix.DefaultPort))
+
 //go:embed web/index.html
-var indexHTML []byte
+var indexHTML string
+
+var indexPage = template.Must(template.New("index").Parse(indexHTML))
 
 type pushRequest struct {
+	Device    string
 	Title     string
 	Text      string
 	Image     image.Image
@@ -57,28 +63,32 @@ func defaultPushRequest() pushRequest {
 }
 
 type webServer struct {
-	ctx    context.Context
-	device string
-	font   *zectrix.Font
-	mu     sync.Mutex
-	push   func(context.Context, pushRequest) error
+	ctx           context.Context
+	defaultDevice string
+	font          *zectrix.Font
+	mu            sync.Mutex
+	push          func(context.Context, pushRequest) error
 }
 
-func newWebServer(ctx context.Context, device string, font *zectrix.Font) *webServer {
-	s := &webServer{ctx: ctx, device: device, font: font}
+func newWebServer(ctx context.Context, defaultDevice string, font *zectrix.Font) *webServer {
+	s := &webServer{ctx: ctx, defaultDevice: defaultDevice, font: font}
 	s.push = s.pushDevice
 	return s
 }
 
 func cmdDemo(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("demo", flag.ExitOnError)
-	device := fs.String("device", "", "device address or id")
-	listen := fs.String("listen", "127.0.0.1:8080", "HTTP listen address")
+	device := fs.String("device", "", "optional default device address or id")
+	listen := fs.String("listen", defaultDemoListen, "HTTP listen address")
 	fontPath := fs.String("font", "", "font file (default: embedded Zfull-GB)")
 	fs.Parse(args)
-	addr, err := resolve(ctx, *device)
-	if err != nil {
-		return err
+	addr := strings.TrimSpace(*device)
+	if addr != "" {
+		resolved, err := resolve(ctx, addr)
+		if err != nil {
+			return err
+		}
+		addr = resolved
 	}
 	font, err := zectrix.LoadFont(*fontPath)
 	if err != nil {
@@ -110,7 +120,7 @@ func (s *webServer) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(indexHTML)
+		indexPage.Execute(w, s.defaultDevice)
 	})
 	mux.HandleFunc("GET /assets/Zfull-GB.ttf", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "font/ttf")
@@ -126,6 +136,16 @@ func (s *webServer) routes() http.Handler {
 
 func (s *webServer) handlePush(w http.ResponseWriter, r *http.Request) {
 	req, err := parsePushRequest(r)
+	if err == nil {
+		if req.Device == "" {
+			req.Device = s.defaultDevice
+		}
+		if req.Device == "" {
+			err = errors.New("device is required when no default device is configured")
+		} else {
+			req.Device, err = zectrix.NormalizeAddress(req.Device)
+		}
+	}
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"ok": false, "error": err.Error()})
 		return
@@ -157,6 +177,7 @@ func (s *webServer) handlePush(w http.ResponseWriter, r *http.Request) {
 }
 
 type jsonPushRequest struct {
+	Device    string `json:"device"`
 	Title     string `json:"title"`
 	Text      string `json:"text"`
 	Image     string `json:"image"`
@@ -196,6 +217,7 @@ func parseJSONPush(r *http.Request) (pushRequest, error) {
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		return req, fmt.Errorf("request must contain one JSON object")
 	}
+	req.Device = input.Device
 	req.Title, req.Text, req.Sound = input.Title, input.Text, input.Sound
 	if input.Volume != nil {
 		req.Volume = *input.Volume
@@ -234,6 +256,7 @@ func parseFormPush(r *http.Request) (pushRequest, error) {
 	if err := r.ParseMultipartForm(maxRequestBytes); err != nil {
 		return req, err
 	}
+	req.Device = r.PostFormValue("device")
 	req.Title, req.Text = r.FormValue("title"), r.FormValue("text")
 	if value := r.FormValue("sound"); value != "" {
 		req.Sound = value
@@ -289,6 +312,7 @@ func decodeImage(data []byte) (image.Image, error) {
 }
 
 func normalizePushRequest(req pushRequest) (pushRequest, error) {
+	req.Device = strings.TrimSpace(req.Device)
 	req.Title = strings.TrimSpace(req.Title)
 	req.Text = strings.TrimSpace(req.Text)
 	req.Sound = strings.TrimSpace(req.Sound)
@@ -334,7 +358,7 @@ func (s *webServer) pushDevice(ctx context.Context, req pushRequest) (err error)
 			return err
 		}
 	}
-	d, err := openHTTPDevice(ctx, s.device)
+	d, err := openHTTPDevice(ctx, req.Device)
 	if err != nil {
 		return err
 	}

@@ -15,7 +15,7 @@ import (
 )
 
 func testWebServer() (*webServer, *pushRequest) {
-	s := &webServer{ctx: context.Background()}
+	s := &webServer{ctx: context.Background(), defaultDevice: "192.0.2.1"}
 	captured := &pushRequest{}
 	s.push = func(_ context.Context, req pushRequest) error {
 		*captured = req
@@ -32,6 +32,9 @@ func TestPushJSONUsesDefaults(t *testing.T) {
 	s.routes().ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", w.Code, w.Body)
+	}
+	if captured.Device != "192.0.2.1:32342" {
+		t.Fatalf("device = %q", captured.Device)
 	}
 	if captured.Title != "通知" || captured.Text != "你好" || captured.Volume != 80 || captured.Sound != "Glass" || captured.Hold != 3 || captured.TitleSize != 16 || captured.BodySize != 14 {
 		t.Fatalf("%+v", captured)
@@ -52,6 +55,7 @@ func TestPushJSONAcceptsExplicitZeroAndManualHold(t *testing.T) {
 func TestPushMultipartImage(t *testing.T) {
 	var encoded bytes.Buffer
 	writer := multipart.NewWriter(&encoded)
+	writer.WriteField("device", "192.0.2.2:40000")
 	writer.WriteField("volume", "90")
 	writer.WriteField("sound", "Tink")
 	writer.WriteField("hold", "0")
@@ -75,8 +79,38 @@ func TestPushMultipartImage(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", w.Code, w.Body)
 	}
+	if captured.Device != "192.0.2.2:40000" {
+		t.Fatalf("device = %q", captured.Device)
+	}
 	if captured.Image == nil || captured.Image.Bounds().Dx() != 20 || captured.Volume != 90 || captured.Sound != "Tink" || captured.Hold != 0 || captured.TitleSize != 18 || captured.BodySize != 13 {
 		t.Fatalf("%+v", captured)
+	}
+}
+
+func TestPushRequestDevice(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		defaultDevice string
+		body          string
+		wantDevice    string
+		wantStatus    int
+	}{
+		{"override", "192.0.2.1", `{"text":"x","device":" 192.0.2.2 "}`, "192.0.2.2:32342", http.StatusOK},
+		{"request only", "", `{"text":"x","device":"192.0.2.2"}`, "192.0.2.2:32342", http.StatusOK},
+		{"missing", "", `{"text":"x"}`, "", http.StatusUnprocessableEntity},
+		{"invalid override", "192.0.2.1", `{"text":"x","device":"invalid"}`, "", http.StatusUnprocessableEntity},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s, captured := testWebServer()
+			s.defaultDevice = tt.defaultDevice
+			r := httptest.NewRequest(http.MethodPost, "/api/push", strings.NewReader(tt.body))
+			r.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			s.routes().ServeHTTP(w, r)
+			if w.Code != tt.wantStatus || captured.Device != tt.wantDevice {
+				t.Fatalf("status %d, device %q, response %s", w.Code, captured.Device, w.Body)
+			}
+		})
 	}
 }
 
@@ -124,6 +158,9 @@ func TestWebPageAndPromptCatalog(t *testing.T) {
 		s.routes().ServeHTTP(w, r)
 		if w.Code != http.StatusOK || w.Body.Len() == 0 {
 			t.Fatalf("%s: status %d", path, w.Code)
+		}
+		if path == "/" && !strings.Contains(w.Body.String(), `name="device" placeholder="192.0.2.1">`) {
+			t.Fatal("page is missing the optional device input with the configured default")
 		}
 	}
 }

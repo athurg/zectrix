@@ -4,7 +4,7 @@
 //	zectrix info    -device <IPv4[:port] | 12-hex id>
 //	zectrix status  -device <IPv4[:port] | 12-hex id> [-interval 30s] [-name "Go Client"]
 //	zectrix prompts -device <addr> [-volume 100] [-interval 1s]
-//	zectrix demo    -device <addr> [-listen 127.0.0.1:8080] [-font F]
+//	zectrix demo    [-device <addr>] [-listen ADDR] [-font F]
 package main
 
 import (
@@ -56,17 +56,17 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `usage:
+	fmt.Fprintf(os.Stderr, `usage:
   zectrix discover [-t 5s]                 list devices via mDNS (read-only)
   zectrix info -device ADDR                read INFO without connecting
   zectrix status -device ADDR [-interval 30s] [-name NAME]
                                            connect, query status, CLOSE on exit
   zectrix prompts -device ADDR [-volume 100] [-interval 1s]
                                            play every built-in prompt once, printing its ID
-  zectrix demo -device ADDR [-listen 127.0.0.1:8080] [-font F]
+  zectrix demo [-device ADDR] [-listen %s] [-font F]
                                            serve the web page and HTTP push API
 ADDR is IPv4, IPv4:port or a 12-hex device id.
-`)
+`, defaultDemoListen)
 }
 
 func cmdDiscover(ctx context.Context, args []string) error {

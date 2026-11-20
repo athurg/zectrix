@@ -18,65 +18,43 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	zectrix "github.com/athurg/zectrix"
 	"github.com/athurg/zectrix/assets"
 )
 
-const (
-	defaultVolume   = 80
-	defaultSound    = "Glass"
-	defaultHold     = 3
-	maxRequestBytes = 12 << 20
-)
+const maxRequestBytes = 12 << 20
 
 //go:embed web/index.html
 var indexHTML string
 
 var indexPage = template.Must(template.New("index").Parse(indexHTML))
 
-type pushRequest struct {
-	Device    string
-	Title     string
-	Text      string
-	Image     image.Image
-	Volume    int
-	Sound     string
-	Hold      int
-	TitleSize int
-	BodySize  int
-}
-
-func defaultPushRequest() pushRequest {
-	return pushRequest{
-		Volume:    defaultVolume,
-		Sound:     defaultSound,
-		Hold:      defaultHold,
-		TitleSize: zectrix.DefaultTitleSize,
-		BodySize:  zectrix.DefaultBodySize,
-	}
-}
-
 type webServer struct {
-	ctx           context.Context
-	defaultDevice string
-	font          *zectrix.Font
-	mu            sync.Mutex
-	push          func(context.Context, pushRequest) error
+	ctx      context.Context
+	defaults pushRequest
+	mu       sync.Mutex
+	push     func(context.Context, pushRequest) error
 }
 
-func newWebServer(ctx context.Context, defaultDevice string, font *zectrix.Font) *webServer {
-	s := &webServer{ctx: ctx, defaultDevice: defaultDevice, font: font}
-	s.push = s.pushDevice
-	return s
+func newWebServer(ctx context.Context, defaults pushRequest, font *zectrix.Font) *webServer {
+	return &webServer{
+		ctx:      ctx,
+		defaults: defaults,
+		push: func(ctx context.Context, req pushRequest) error {
+			return pushDevice(ctx, req, font, "Go HTTP Demo")
+		},
+	}
 }
 
 func (s *webServer) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		indexPage.Execute(w, s.defaultDevice)
+		indexPage.Execute(w, struct {
+			Defaults pushRequest
+			Prompts  []zectrix.PromptInfo
+		}{s.defaults, zectrix.Prompts()})
 	})
 	mux.HandleFunc("GET /assets/Zfull-GB.ttf", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "font/ttf")
@@ -91,10 +69,10 @@ func (s *webServer) routes() http.Handler {
 }
 
 func (s *webServer) handlePush(w http.ResponseWriter, r *http.Request) {
-	req, err := parsePushRequest(r)
+	req, err := parsePushRequest(r, s.defaults)
 	if err == nil {
 		if req.Device == "" {
-			req.Device = s.defaultDevice
+			req.Device = s.defaults.Device
 		}
 		if req.Device == "" {
 			err = errors.New("device is required when no default device is configured")
@@ -133,37 +111,36 @@ func (s *webServer) handlePush(w http.ResponseWriter, r *http.Request) {
 }
 
 type jsonPushRequest struct {
-	Device    string `json:"device"`
-	Title     string `json:"title"`
-	Text      string `json:"text"`
-	Image     string `json:"image"`
-	Volume    *int   `json:"volume"`
-	Sound     string `json:"sound"`
-	Hold      *int   `json:"hold"`
-	TitleSize *int   `json:"title_size"`
-	BodySize  *int   `json:"body_size"`
+	Device    string  `json:"device"`
+	Title     *string `json:"title"`
+	Text      *string `json:"text"`
+	Image     string  `json:"image"`
+	Volume    *int    `json:"volume"`
+	Sound     string  `json:"sound"`
+	Hold      *int    `json:"hold"`
+	TitleSize *int    `json:"title_size"`
+	BodySize  *int    `json:"body_size"`
 }
 
-func parsePushRequest(r *http.Request) (pushRequest, error) {
-	req := defaultPushRequest()
+func parsePushRequest(r *http.Request, defaults pushRequest) (pushRequest, error) {
+	var req pushRequest
 	contentType := r.Header.Get("Content-Type")
 	var err error
 	switch {
 	case strings.HasPrefix(contentType, "application/json"):
-		req, err = parseJSONPush(r)
+		req, err = parseJSONPush(r, defaults)
 	case strings.HasPrefix(contentType, "multipart/form-data"):
-		req, err = parseFormPush(r)
+		req, err = parseFormPush(r, defaults)
 	default:
 		return req, fmt.Errorf("Content-Type must be application/json or multipart/form-data")
 	}
 	if err != nil {
 		return req, err
 	}
-	return normalizePushRequest(req)
+	return normalizePushRequest(req, true)
 }
 
-func parseJSONPush(r *http.Request) (pushRequest, error) {
-	req := defaultPushRequest()
+func parseJSONPush(r *http.Request, req pushRequest) (pushRequest, error) {
 	var input jsonPushRequest
 	decoder := json.NewDecoder(io.LimitReader(r.Body, maxRequestBytes))
 	decoder.DisallowUnknownFields()
@@ -174,7 +151,12 @@ func parseJSONPush(r *http.Request) (pushRequest, error) {
 		return req, fmt.Errorf("request must contain one JSON object")
 	}
 	req.Device = input.Device
-	req.Title, req.Text, req.Sound = input.Title, input.Text, input.Sound
+	if input.Title != nil {
+		req.Title = *input.Title
+	}
+	if strings.TrimSpace(input.Sound) != "" {
+		req.Sound = input.Sound
+	}
 	if input.Volume != nil {
 		req.Volume = *input.Volume
 	}
@@ -187,8 +169,11 @@ func parseJSONPush(r *http.Request) (pushRequest, error) {
 	if input.BodySize != nil {
 		req.BodySize = *input.BodySize
 	}
-	if req.Sound == "" {
-		req.Sound = defaultSound
+	if input.Text != nil || input.Image != "" {
+		req.Text, req.Image = "", nil
+		if input.Text != nil {
+			req.Text = *input.Text
+		}
 	}
 	if input.Image != "" {
 		encoded := input.Image
@@ -207,14 +192,19 @@ func parseJSONPush(r *http.Request) (pushRequest, error) {
 	return req, nil
 }
 
-func parseFormPush(r *http.Request) (pushRequest, error) {
-	req := defaultPushRequest()
+func parseFormPush(r *http.Request, req pushRequest) (pushRequest, error) {
 	if err := r.ParseMultipartForm(maxRequestBytes); err != nil {
 		return req, err
 	}
 	req.Device = r.PostFormValue("device")
-	req.Title, req.Text = r.FormValue("title"), r.FormValue("text")
-	if value := r.FormValue("sound"); value != "" {
+	if r.Form.Has("title") {
+		req.Title = r.FormValue("title")
+	}
+	hasText := r.Form.Has("text")
+	if hasText {
+		req.Text, req.Image = r.FormValue("text"), nil
+	}
+	if value := r.FormValue("sound"); strings.TrimSpace(value) != "" {
 		req.Sound = value
 	}
 	var err error
@@ -245,6 +235,9 @@ func parseFormPush(r *http.Request) (pushRequest, error) {
 	file, _, err := r.FormFile("image")
 	if err == nil {
 		defer file.Close()
+		if !hasText {
+			req.Text = ""
+		}
 		data, err := io.ReadAll(io.LimitReader(file, maxRequestBytes+1))
 		if err != nil {
 			return req, err
@@ -265,112 +258,6 @@ func decodeImage(data []byte) (image.Image, error) {
 		return nil, fmt.Errorf("invalid image: %w", err)
 	}
 	return img, nil
-}
-
-func normalizePushRequest(req pushRequest) (pushRequest, error) {
-	req.Device = strings.TrimSpace(req.Device)
-	req.Title = strings.TrimSpace(req.Title)
-	req.Text = strings.TrimSpace(req.Text)
-	req.Sound = strings.TrimSpace(req.Sound)
-	if req.Sound == "" {
-		req.Sound = defaultSound
-	}
-	if req.Volume < 0 || req.Volume > 100 {
-		return req, fmt.Errorf("volume must be 0..100")
-	}
-	if req.Hold < 0 {
-		return req, fmt.Errorf("hold must be a non-negative number of seconds")
-	}
-	if req.TitleSize < zectrix.MinFontSize || req.TitleSize > zectrix.MaxFontSize ||
-		req.BodySize < zectrix.MinFontSize || req.BodySize > zectrix.MaxFontSize {
-		return req, fmt.Errorf("title_size and body_size must be %d..%d", zectrix.MinFontSize, zectrix.MaxFontSize)
-	}
-	if (req.Text == "") == (req.Image == nil) {
-		return req, fmt.Errorf("provide exactly one of text or image")
-	}
-	for _, prompt := range zectrix.Prompts() {
-		if prompt.ID == req.Sound || strings.EqualFold(prompt.Name, req.Sound) {
-			req.Sound = prompt.Name
-			return req, nil
-		}
-	}
-	return req, fmt.Errorf("unknown sound %q", req.Sound)
-}
-
-func (s *webServer) pushDevice(ctx context.Context, req pushRequest) (err error) {
-	audio, err := zectrix.PromptAudio(req.Sound)
-	if err != nil {
-		return err
-	}
-	var page image.Image
-	if req.Image != nil {
-		page = req.Image
-	} else {
-		page, err = zectrix.RenderTextWithOptions(s.font, req.Title, req.Text, zectrix.TextOptions{
-			TitleSize: req.TitleSize,
-			BodySize:  req.BodySize,
-		})
-		if err != nil {
-			return err
-		}
-	}
-	d, err := openHTTPDevice(ctx, req.Device)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = d.Close() }()
-	playback := d.StartAudio(ctx, audio, uint8(req.Volume))
-	<-playback.Started
-	select {
-	case err := <-playback.Done:
-		if err != nil {
-			return err
-		}
-	default:
-	}
-	imageErr := d.ShowImage(ctx, page)
-	audioErr := <-playback.Done
-	if err := errors.Join(audioErr, imageErr); err != nil {
-		return err
-	}
-	return waitHold(ctx, req.Hold, d.Keys(), d.Done())
-}
-
-func openHTTPDevice(ctx context.Context, addr string) (*zectrix.Device, error) {
-	for attempt := 0; attempt < 4; attempt++ {
-		d, err := zectrix.Open(ctx, addr, "Go HTTP Demo")
-		if err == nil || !errors.Is(err, zectrix.ErrBusy) || attempt == 3 {
-			return d, err
-		}
-		select {
-		case <-time.After(2 * time.Second):
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-	panic("unreachable")
-}
-
-func waitHold(ctx context.Context, hold int, keys <-chan zectrix.KeyEvent, done <-chan struct{}) error {
-	var timeout <-chan time.Time
-	var timer *time.Timer
-	if hold > 0 {
-		timer = time.NewTimer(time.Duration(hold) * time.Second)
-		defer timer.Stop()
-		timeout = timer.C
-	}
-	for {
-		select {
-		case <-keys:
-			return nil
-		case <-timeout:
-			return nil
-		case <-done:
-			return zectrix.ErrDisconnected
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

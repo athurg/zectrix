@@ -6,65 +6,106 @@
   <title>ZECTRIX Note 4 推送</title>
   <style>
     @font-face { font-family: "Zfull-GB"; src: url("/assets/Zfull-GB.ttf") format("truetype"); font-style: normal; font-weight: 400; font-display: block; }
-    :root { color-scheme: light; font-family: "Zfull-GB", sans-serif; }
-    body { max-width: 720px; margin: 40px auto; padding: 0 20px; color: #202124; background: #f6f7f9; }
+    :root {
+      color-scheme: light;
+      font-family: "Zfull-GB", sans-serif;
+      --form-padding: 24px;
+      --field-padding-block: 10px;
+      --field-padding-inline: 12px;
+      --field-border: 1px;
+    }
+    body {
+      max-width: calc(26ic + 2 * (var(--form-padding) + var(--field-padding-inline) + var(--field-border)));
+      margin: 40px auto;
+      padding: 0 20px;
+      color: #202124;
+      background: #f6f7f9;
+    }
     h1 { font-size: 26px; margin-bottom: 8px; }
     p { color: #5f6368; line-height: 1.6; }
-    form { background: white; padding: 24px; border-radius: 14px; box-shadow: 0 4px 24px #0001; }
+    form { background: white; padding: var(--form-padding); border-radius: 14px; box-shadow: 0 4px 24px #0001; }
     label { display: block; font-weight: 400; margin: 18px 0 7px; }
-    input, textarea, select { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid #dadce0; border-radius: 8px; font: inherit; background: white; }
-    textarea { min-height: 150px; resize: vertical; }
-    .row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; }
+    input, textarea, select {
+      box-sizing: border-box;
+      width: 100%;
+      padding: var(--field-padding-block) var(--field-padding-inline);
+      border: var(--field-border) solid #dadce0;
+      border-radius: 8px;
+      font: inherit;
+      background: white;
+    }
+    textarea {
+      display: block;
+      line-height: 1.5;
+      min-height: calc(11lh + 2 * (var(--field-padding-block) + var(--field-border)));
+      resize: vertical;
+    }
+    .row { display: grid; grid-template-columns: 2fr 1fr 1fr; align-items: end; gap: 12px; }
+    .row input, .row select { display: block; height: 2.75em; }
+    select {
+      appearance: none;
+      padding-inline-end: 30px;
+      background:
+        linear-gradient(45deg, transparent 50%, #5f6368 50%) right 16px center / 5px 5px no-repeat,
+        linear-gradient(135deg, #5f6368 50%, transparent 50%) right 11px center / 5px 5px no-repeat,
+        white;
+    }
+    @media (forced-colors: active) { select { appearance: auto; background-image: none; } }
+    #use-default-image { width: auto; margin-inline-end: 6px; }
     .sizes { grid-template-columns: 1fr 1fr; }
     button { margin-top: 22px; width: 100%; padding: 12px; border: 0; border-radius: 8px; background: #1a73e8; color: white; font: inherit; font-weight: 400; cursor: pointer; }
     button:disabled { opacity: .55; cursor: wait; }
     #result { white-space: pre-wrap; min-height: 24px; }
     code { background: #e8eaed; padding: 2px 5px; border-radius: 4px; }
     @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+    @media (max-width: 480px) {
+      :root { --form-padding: 16px; }
+      body { padding-inline: 12px; }
+    }
   </style>
 </head>
 <body>
   <h1>ZECTRIX Note 4 推送</h1>
   <p>每次推送都会建立新连接，同时播放提示音并显示内容。保持时间为 <code>0</code> 时一直显示；按设备任意键均可提前结束。</p>
   <form id="push">
-    <label for="device">设备 IP{{if .}}（留空使用默认地址）{{end}}</label>
-    <input id="device" name="device" placeholder="{{if .}}{{.}}{{else}}192.168.1.100{{end}}"{{if not .}} required{{end}}>
+    <label for="device">设备 IP{{if .Defaults.Device}}（留空使用默认地址）{{end}}</label>
+    <input id="device" name="device" placeholder="{{if .Defaults.Device}}{{.Defaults.Device}}{{else}}192.168.1.100{{end}}"{{if not .Defaults.Device}} required{{end}}>
 
     <label for="title">标题（仅文本，可选）</label>
-    <input id="title" name="title" placeholder="通知">
+    <input id="title" name="title" placeholder="通知" value="{{.Defaults.Title}}">
 
     <label for="text">文本</label>
-    <textarea id="text" name="text" placeholder="输入要显示的文字">道可道，非常道；名可名，非常名。</textarea>
+    <textarea id="text" name="text" cols="26" rows="11" placeholder="输入要显示的文字">{{.Defaults.Text}}</textarea>
 
     <div class="row sizes">
       <div>
         <label for="title_size">标题字号（px）</label>
-        <input id="title_size" name="title_size" type="number" min="8" max="48" step="1" value="16" required>
+        <input id="title_size" name="title_size" type="number" min="8" max="48" step="1" value="{{.Defaults.TitleSize}}" required>
       </div>
       <div>
         <label for="body_size">正文字号（px）</label>
-        <input id="body_size" name="body_size" type="number" min="8" max="48" step="1" value="14" required>
+        <input id="body_size" name="body_size" type="number" min="8" max="48" step="1" value="{{.Defaults.BodySize}}" required>
       </div>
     </div>
 
     <label for="image">或选择图片（选择后忽略文本和字号）</label>
     <input id="image" name="image" type="file" accept="image/png,image/jpeg,image/gif">
+    {{if .Defaults.Image}}<label><input id="use-default-image" type="checkbox" checked>使用启动时指定的图片</label>{{end}}
 
     <div class="row">
       <div>
         <label for="sound">音效</label>
         <select id="sound" name="sound">
-          <option>Purr</option><option>Tink</option><option>Bottle</option>
-          <option>Pop</option><option selected>Glass</option><option>Submarine</option>
+          {{range .Prompts}}<option{{if eq .Name $.Defaults.Sound}} selected{{end}}>{{.Name}}</option>{{end}}
         </select>
       </div>
       <div>
         <label for="volume">音量</label>
-        <input id="volume" name="volume" type="number" min="0" max="100" value="80" required>
+        <input id="volume" name="volume" type="number" min="0" max="100" value="{{.Defaults.Volume}}" required>
       </div>
       <div>
         <label for="hold">保持（秒）</label>
-        <input id="hold" name="hold" type="number" min="0" step="1" value="3" required>
+        <input id="hold" name="hold" type="number" min="0" step="1" value="{{.Defaults.Hold}}" required>
       </div>
     </div>
     <button id="submit" type="submit">推送到设备</button>
@@ -103,8 +144,9 @@
       button.disabled = true;
       result.textContent = '正在推送，请留意设备…';
       const data = new FormData(form);
-      if (document.getElementById('image').files.length > 0) data.delete('text');
-      else data.delete('image');
+      const hasUpload = document.getElementById('image').files.length > 0;
+      if (!hasUpload) data.delete('image');
+      if (hasUpload || document.getElementById('use-default-image')?.checked) data.delete('text');
       try {
         const response = await fetch('/api/push', {method: 'POST', body: data});
         const body = await response.json();

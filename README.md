@@ -48,6 +48,6 @@ func main() {
 | 设备信息 | `go run ./examples/zectrix-info -device 192.168.1.100` | 只读查询设备信息 |
 | 设备状态 | `go run ./examples/zectrix-status -device 192.168.1.100` | 建立会话并查询状态，设置 `-interval 30s` 可持续监听按键 |
 | 提示音 | `go run ./examples/zectrix-alert -device 192.168.1.100` | 依次播放内置提示音 |
-| Web 推送 | `go run ./examples/zectrix-push` | 提供网页和 HTTP 推送 API |
+| 推送 | `go run ./examples/zectrix-push -device 192.168.1.100 -text '你好'` | 命令行推送，加 `-web` 启动网页和 HTTP API |
 
-[Web 推送 Demo 使用说明](examples/zectrix-push/README.md) · [Note 4 LAN v1 协议参考](docs/note4-lan-v1-protocol.md)
+[推送 Demo 使用说明](examples/zectrix-push/README.md) · [Note 4 LAN v1 协议参考](docs/note4-lan-v1-protocol.md)

@@ -29,6 +29,12 @@ const (
 // first face that maps Chinese glyphs.
 type FontSpec struct{ Path, Face string }
 
+// Font contains a parsed OpenType face and its embedded bitmap tables, if present.
+type Font struct {
+	*opentype.Font
+	bitmaps bitmapFont
+}
+
 // LoadFont loads the embedded Zfull-GB font when path is empty, or path
 // otherwise. For a collection (.ttc), the first Chinese face is used.
 func LoadFont(path string) (*Font, error) {
@@ -71,7 +77,7 @@ func parseFont(data []byte, faceName string) (*Font, error) {
 		}
 		// Parsing succeeds lazily; make sure the face really maps Chinese glyphs.
 		if hasChinese(f) {
-			return newFont(data, f)
+			return &Font{Font: f, bitmaps: readBitmapFont(data, i)}, nil
 		}
 	}
 	if faceName != "" {
@@ -92,10 +98,6 @@ func hasChinese(f *opentype.Font) bool {
 
 // Closing punctuation may hang past the right margin instead of starting a line.
 const noLineStart = "，。、；：！？）」』”’》〉…"
-
-func face(f *Font, size int) (font.Face, error) {
-	return newFreeTypeFace(f, size)
-}
 
 // wrap breaks paragraphs (split on '\n') into lines no wider than max.
 func wrap(fc font.Face, text string, max fixed.Int26_6) []string {
@@ -138,8 +140,9 @@ func Render(f *Font, title, body, footer string) (*image.Gray, error) {
 	})
 }
 
-// RenderWithOptions draws text using FreeType and rejects text that does not
-// fit. Grayscale glyph edges are preserved for PackMono's 1bpp conversion.
+// RenderWithOptions draws text using embedded bitmaps or OpenType outlines and
+// rejects text that does not fit. Grayscale glyph edges are preserved for
+// PackMono's 1bpp conversion.
 func RenderWithOptions(f *Font, title, body, footer string, options Options) (*image.Gray, error) {
 	if options.TitleSize < MinFontSize || options.TitleSize > MaxFontSize ||
 		options.BodySize < MinFontSize || options.BodySize > MaxFontSize {

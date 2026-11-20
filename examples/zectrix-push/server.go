@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"html/template"
 	"image"
@@ -15,7 +14,6 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,8 +30,6 @@ const (
 	defaultHold     = 3
 	maxRequestBytes = 12 << 20
 )
-
-var defaultDemoListen = net.JoinHostPort("127.0.0.1", strconv.Itoa(zectrix.DefaultPort))
 
 //go:embed web/index.html
 var indexHTML string
@@ -74,46 +70,6 @@ func newWebServer(ctx context.Context, defaultDevice string, font *zectrix.Font)
 	s := &webServer{ctx: ctx, defaultDevice: defaultDevice, font: font}
 	s.push = s.pushDevice
 	return s
-}
-
-func cmdDemo(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("demo", flag.ExitOnError)
-	device := fs.String("device", "", "optional default device address or id")
-	listen := fs.String("listen", defaultDemoListen, "HTTP listen address")
-	fontPath := fs.String("font", "", "font file (default: embedded Zfull-GB)")
-	fs.Parse(args)
-	addr := strings.TrimSpace(*device)
-	if addr != "" {
-		resolved, err := resolve(ctx, addr)
-		if err != nil {
-			return err
-		}
-		addr = resolved
-	}
-	font, err := zectrix.LoadFont(*fontPath)
-	if err != nil {
-		return err
-	}
-	web := newWebServer(ctx, addr, font)
-	listener, err := net.Listen("tcp", *listen)
-	if err != nil {
-		return err
-	}
-	server := &http.Server{Handler: web.routes(), ReadHeaderTimeout: 5 * time.Second}
-	errCh := make(chan error, 1)
-	go func() { errCh <- server.Serve(listener) }()
-	fmt.Printf("ZECTRIX web demo: http://%s\n", listener.Addr())
-	select {
-	case err := <-errCh:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return server.Shutdown(shutdownCtx)
-	}
 }
 
 func (s *webServer) routes() http.Handler {

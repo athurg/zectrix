@@ -1,36 +1,53 @@
-# Zectrix
+# Zectrix Go SDK
 
-Zectrix 提供 Note 4 设备的命令行工具和 Web 演示页面。
+Zectrix 是用于在局域网内操作 Note 4 设备的 Go SDK，支持设备发现、会话管理、状态查询、按键事件、图像推送和音频播放。
 
-## 直接运行
+## 安装
 
-需要 Go 1.25 或更新版本、支持 CGO 的 C 编译器、`pkg-config` 和 FreeType 开发库。构建前可用 `pkg-config --modversion freetype2` 检查 FreeType 是否可用。
+需要 Go 1.25 或更新版本。SDK 和 Demo 使用纯 Go，可以在 `CGO_ENABLED=0` 下构建。
 
-在项目根目录运行以下命令，查找局域网中的设备。
-
-```sh
-go run ./cmd/zectrix discover
-```
-
-启动 Web 演示时，可以用 `-device` 设置默认设备，支持 IPv4 地址、`IPv4:端口` 或 12 位十六进制设备 ID。也可以直接运行 `go run ./cmd/zectrix demo`，在页面或 API 请求中指定设备。
+在你的 Go 模块中添加依赖。
 
 ```sh
-go run ./cmd/zectrix demo -device 192.168.1.100
+go get github.com/athurg/zectrix
 ```
 
-在浏览器中打开 `http://127.0.0.1:32342`。Web 服务的 TCP 端口默认与设备的 UDP 端口同为 `32342`。需要从局域网内的其他设备访问时，加上 `-listen 0.0.0.0:32342`。
+## 使用示例
 
-在页面的「设备 IP」栏填写目标地址，或在 `POST /api/push` 的 JSON 或 multipart 表单中传入 `device` 字段。两种方式都支持 IPv4 和 `IPv4:端口`，并覆盖本次推送的目标。留空时使用启动参数指定的默认设备。没有默认设备时，每次推送都要提供地址。
+下面的程序通过 IPv4 地址查询设备信息。将示例地址换成你的设备 IP。
 
-```sh
-curl http://127.0.0.1:32342/api/push \
-  -H 'Content-Type: application/json' \
-  -d '{"device":"192.168.1.100","text":"你好"}'
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/athurg/zectrix"
+)
+
+func main() {
+	info, err := zectrix.QueryInfo(context.Background(), "192.168.1.100")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(info.ID, info.Model, info.Address)
+}
 ```
 
-也可以先构建可执行文件，再直接运行。
+文字渲染优先使用与字号匹配的 OpenType 内置点阵（`EBLC`/`EBDT` 中的单字形点阵）。默认字体 `Zfull-GB` 包含 8–24px 的 1bpp 点阵。缺少可用点阵的字号和字符使用 OpenType 轮廓渲染。
 
-```sh
-go build -o zectrix ./cmd/zectrix
-./zectrix demo -device 192.168.1.100
-```
+## 独立 Demo
+
+在本仓库根目录运行。每个 Demo 都可用 `-h` 查看参数。
+
+| Demo | 运行命令 | 功能 |
+| --- | --- | --- |
+| 设备发现 | `go run ./examples/zectrix-discover` | 通过 mDNS 列出设备 |
+| 设备信息 | `go run ./examples/zectrix-info -device 192.168.1.100` | 只读查询设备信息 |
+| 设备状态 | `go run ./examples/zectrix-status -device 192.168.1.100` | 建立会话并查询状态，设置 `-interval 30s` 可持续监听按键 |
+| 提示音 | `go run ./examples/zectrix-alert -device 192.168.1.100` | 依次播放内置提示音 |
+| Web 推送 | `go run ./examples/zectrix-push` | 提供网页和 HTTP 推送 API |
+
+[Web 推送 Demo 使用说明](examples/zectrix-push/README.md) · [Note 4 LAN v1 协议参考](docs/note4-lan-v1-protocol.md)

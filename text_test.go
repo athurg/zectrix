@@ -1,9 +1,32 @@
 package zectrix
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"math/bits"
 	"testing"
 )
+
+func TestRenderTextMatchesFreeTypeBitmapLayout(t *testing.T) {
+	font, err := LoadFont("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "道可道，非常道；名可名，非常名。\n上善若水，水善利万物而不争。\n知人者智，自知者明。千里之行，始于足下。\n\n设备在线，电量 73%，Wi-Fi 信号良好。\n更新时间 17:40，下一次刷新预计在 15 分钟后。"
+	page, err := RenderText(font, "设备状态通知", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packed, err := PackMono(fitImage(page))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The original FreeType output includes the title baseline, divider and body spacing.
+	const want = "d8d8b66677e5171db8150f5e15ed24e86c01eb18991c519f84039b115b67b9d5"
+	if got := fmt.Sprintf("%x", sha256.Sum256(packed)); got != want {
+		t.Fatalf("1bpp image hash = %s, want %s", got, want)
+	}
+}
 
 func TestRenderTextThroughImageFitHasInk(t *testing.T) {
 	font, err := LoadFont("")

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	zectrix "github.com/itopinion/zectrix-local-push-sdk-golang"
+	zectrix "github.com/athurg/zectrix"
 )
 
 func testWebServer() (*webServer, *pushRequest) {

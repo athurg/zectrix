@@ -1,4 +1,4 @@
-module github.com/itopinion/zectrix-local-push-sdk-golang
+module github.com/athurg/zectrix
 
 go 1.25
 

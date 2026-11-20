@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	zectrix "github.com/itopinion/zectrix-local-push-sdk-golang"
+	zectrix "github.com/athurg/zectrix"
 	"golang.org/x/image/font/opentype"
 )
 

@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	zectrix "github.com/itopinion/zectrix-local-push-sdk-golang"
+	zectrix "github.com/athurg/zectrix"
 )
 
 const minInterval = 30 * time.Second

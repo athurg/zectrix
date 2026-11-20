@@ -3,7 +3,7 @@ package zectrix
 import (
 	"image"
 
-	"github.com/itopinion/zectrix-local-push-sdk-golang/textimg"
+	"github.com/athurg/zectrix/textimg"
 	"golang.org/x/image/font/opentype"
 )
 

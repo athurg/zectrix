@@ -1,0 +1,18 @@
+services:
+  zectrix:
+    container_name: zectrix
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: zectrix:local
+    ports:
+      - "80:8080"
+      - "8080:8080"
+    command:
+      - demo
+      - -device
+      - ${ZECTRIX_DEVICE:?Set ZECTRIX_DEVICE to the device IP or 12-hex ID}
+      - -listen
+      - 0.0.0.0:8080
+      - -font
+      - /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
